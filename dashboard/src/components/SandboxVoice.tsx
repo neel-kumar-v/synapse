@@ -5,7 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { motion, AnimatePresence } from "framer-motion";
-import { Smile, Pencil, ArrowLeft, Send, Loader2 } from "lucide-react";
+import { Smile, Frown, Meh, Pencil, ArrowLeft, Send, Loader2 } from "lucide-react";
 import { refinePrompt, runPrompt } from "@/lib/workerClient";
 import {
   AudioLinesIcon,
@@ -84,6 +84,30 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/** Delay for each processing step: 5s ± 2s (3–7s) */
+function stepDelayMs(): number {
+  return 5000 + (Math.random() * 4 - 2) * 1000;
+}
+
+const PROCESSING_STEPS_VOICE = [
+  "Analyzing transcription",
+  "Refining prompt",
+  "Contextualizing prompt",
+  "Sending prompt to Cloudflare AI",
+  "AI is updating code...",
+  "Sending edit history to supermemory",
+  "Finalizing edits...",
+];
+
+const PROCESSING_STEPS_TEXT = [
+  "Refining prompt",
+  "Contextualizing prompt",
+  "Sending prompt to Cloudflare AI",
+  "AI is updating code...",
+  "Sending edit history to supermemory",
+  "Finalizing edits...",
+];
+
 function isRejection(text: string): boolean {
   const lower = text.toLowerCase().trim();
   return (
@@ -120,6 +144,9 @@ export function SandboxVoice({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const speakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState<string>("");
+  const processingSourceRef = useRef<"voice" | "text">("text");
+  const [refinedPromptDisplay, setRefinedPromptDisplay] = useState<string>("");
   const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>([]);
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [transcript, setTranscript] = useState({
@@ -141,6 +168,9 @@ export function SandboxVoice({
   const committedRef = useRef("");
   const partialRef = useRef("");
   const isTranscribingRef = useRef(false);
+  /** Minimum hold duration (ms) before we send captured audio to AI. Prevents accidental clicks from triggering capture. */
+  const MIN_HOLD_MS = 400;
+  const holdStartTimeRef = useRef<number>(0);
   /** Accumulates only committed segments received while the user is holding (shift+space or hold-to-speak). Sent to AI on release. */
   const capturedDuringHoldRef = useRef("");
   const [capturedDuringHoldState, setCapturedDuringHoldState] = useState("");
@@ -209,7 +239,13 @@ export function SandboxVoice({
         return;
       }
 
+      processingSourceRef.current = source;
       setIsProcessing(true);
+      setProcessingStep(
+        source === "voice"
+          ? PROCESSING_STEPS_VOICE[0]
+          : PROCESSING_STEPS_TEXT[0],
+      );
       addStatus(
         source === "voice"
           ? "Analyzing voice prompt…"
@@ -228,6 +264,7 @@ export function SandboxVoice({
           return;
         }
 
+        setRefinedPromptDisplay(refined ?? "");
         addStatus("Sending AI refined prompt…");
 
         const result = await runPrompt({
@@ -255,6 +292,8 @@ export function SandboxVoice({
         await playTts("Something went wrong. Please try again.");
       } finally {
         setIsProcessing(false);
+        setProcessingStep("");
+        setRefinedPromptDisplay("");
       }
     },
     [sandboxId, addStatus, playTts],
@@ -277,6 +316,37 @@ export function SandboxVoice({
       }
     };
   }, [endVoiceSessionMutation]);
+
+  // ── processing step cycle ──
+
+  useEffect(() => {
+    if (!isProcessing) return;
+    const steps =
+      processingSourceRef.current === "voice"
+        ? PROCESSING_STEPS_VOICE
+        : PROCESSING_STEPS_TEXT;
+    let stepIndex = 1; // step 0 already set in processPrompt
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    function scheduleNext() {
+      if (stepIndex >= steps.length) return; // stop at final step
+      timeoutId = setTimeout(() => {
+        setProcessingStep(steps[stepIndex]);
+        stepIndex++;
+        scheduleNext();
+      }, stepDelayMs());
+    }
+
+    timeoutId = setTimeout(() => {
+      setProcessingStep(steps[stepIndex]);
+      stepIndex++;
+      scheduleNext();
+    }, stepDelayMs());
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isProcessing]);
 
   // ── STT WebSocket ──
 
@@ -512,6 +582,7 @@ export function SandboxVoice({
 
   const enterTranscribing = useCallback(() => {
     if (isProcessing || ttsPlaying || modeRef.current === "text") return;
+    holdStartTimeRef.current = Date.now();
     // Start a fresh buffer for this hold; only what arrives from now until release is sent to AI
     capturedDuringHoldRef.current = "";
     setCapturedDuringHoldState("");
@@ -524,9 +595,13 @@ export function SandboxVoice({
 
   const exitTranscribing = useCallback(() => {
     if (!isTranscribingRef.current) return;
+    const heldMs = Date.now() - holdStartTimeRef.current;
     isTranscribingRef.current = false;
     setMode("idle");
     modeRef.current = "idle";
+
+    // Only send to AI if user held long enough (prevents accidental clicks from triggering capture)
+    if (heldMs < MIN_HOLD_MS) return;
 
     // Send only what was accumulated during this hold (committed + current partial)
     let captured = (
@@ -621,6 +696,13 @@ export function SandboxVoice({
         ? "ring-red-500/40"
         : "ring-yellow-500/40";
 
+  const EmotionFaceIcon =
+    emotionColor === "green"
+      ? Smile
+      : emotionColor === "red"
+        ? Frown
+        : Meh;
+
   const toolbarWidth =
     mode === "text" ? 450 : mode === "transcribing" ? 300 : 160;
 
@@ -649,7 +731,7 @@ export function SandboxVoice({
                 aria-hidden
               />
               <p className="text-sm font-medium text-white/90">
-                AI is updating your app…
+                {processingStep || "Processing…"}
               </p>
             </div>
           </motion.div>
@@ -667,13 +749,7 @@ export function SandboxVoice({
             transition={{ duration: 0.4 }}
             className="fixed bottom-20 left-0 right-0 z-50 flex justify-center pointer-events-none"
           >
-            <div
-              className="flex flex-col items-center gap-1 px-8 pt-10 pb-4"
-              style={{
-                background:
-                  "linear-gradient(to bottom, transparent, rgba(0,0,0,0.5))",
-              }}
-            >
+            <div className="flex flex-col items-center gap-1 px-8 pt-10 pb-4">
               <AnimatePresence mode="popLayout">
                 {statusUpdates.map((u) => (
                   <motion.p
@@ -775,7 +851,7 @@ export function SandboxVoice({
                     emotionBg,
                   )}
                 >
-                  <Smile className="h-5 w-5 text-white/90" />
+                  <EmotionFaceIcon className="h-5 w-5 text-white/90" />
                 </span>
               </button>
 
@@ -846,7 +922,7 @@ export function SandboxVoice({
               <div className="relative flex items-center justify-center">
                 <span className="absolute inset-[-4px] rounded-full animate-ping ring-[3px] ring-red-500/40" />
                 <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-red-500/20">
-                  <Smile className="h-5 w-5 text-red-400" />
+                  <EmotionFaceIcon className="h-5 w-5 text-red-400" />
                 </span>
               </div>
 

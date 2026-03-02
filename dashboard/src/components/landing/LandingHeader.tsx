@@ -58,6 +58,7 @@ export function LandingHeader() {
         open={signInOpen}
         onOpenChange={setSignInOpen}
         callbackURL="/"
+        dismissible
       />
     </header>
   );

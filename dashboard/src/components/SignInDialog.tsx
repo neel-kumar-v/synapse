@@ -25,12 +25,15 @@ interface SignInDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Redirect here after sign-in; default "/dashboard" */
   callbackURL?: string;
+  /** When true, dialog can be closed via Escape, click outside, or close button (e.g. on landing page) */
+  dismissible?: boolean;
 }
 
 export function SignInDialog({
   open,
   onOpenChange,
   callbackURL = "/dashboard",
+  dismissible = false,
 }: SignInDialogProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -214,10 +217,10 @@ export function SignInDialog({
     >
       <DialogContent
         className="sm:max-w-md"
-        showCloseButton={false}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
+        showCloseButton={dismissible}
+        onEscapeKeyDown={dismissible ? undefined : (e) => e.preventDefault()}
+        onPointerDownOutside={dismissible ? undefined : (e) => e.preventDefault()}
+        onInteractOutside={dismissible ? undefined : (e) => e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle>Welcome</DialogTitle>
