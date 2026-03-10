@@ -1,4 +1,10 @@
 # Synapse
+
+> 🏆 **HackIllinois 2026 Winner**
+> * **Winner:** Best General Hack
+> * **Winner:** Best Use of Cloudflare Developer Platform
+> * 🔗 [View our Devpost submission](https://devpost.com/software/synapse-dx7hcr)
+
 ---
 
 ## What's in this repo
