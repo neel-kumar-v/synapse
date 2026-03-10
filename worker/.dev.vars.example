@@ -1,0 +1,9 @@
+# Worker secrets (copy to .dev.vars and fill in).
+# For production, use: wrangler secret put GEMINI_API_KEY
+
+# Optional: Gemini API key for refining voice/chat prompts before sending to the code AI.
+# Get a key at https://aistudio.google.com/apikey
+# GEMINI_API_KEY=your_gemini_api_key
+
+# Optional: Supermemory for sandbox long-term memory.
+# SUPERMEMORY_API_KEY=your_supermemory_api_key

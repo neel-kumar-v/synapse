@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{SANDBOX_ID}} &mdash; Synapse </title>
+  <style>
+    :root {
+      --bg: #0b0d11;
+      --surface: #14171e;
+      --surface-hover: #1a1e27;
+      --border: #252a35;
+      --text: #e4e7ed;
+      --text-dim: #7a8194;
+      --accent: #6c72cb;
+      --accent-bright: #8187de;
+      --green: #34d399;
+      --red: #f87171;
+      --radius: 12px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: var(--bg);
+    }
+
+    .preview {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+    }
+
+    .preview iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+    }
+
+    .floating-toolbar {
+      position: absolute;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(20, 23, 30, 0.96);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 8px;
+      z-index: 30;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .toolbar-btn {
+      width: 36px;
+      height: 36px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .toolbar-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--border);
+    }
+
+    .toolbar-btn svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(11, 13, 17, .85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      z-index: 10;
+      backdrop-filter: blur(4px);
+    }
+
+    .loading-overlay.hidden {
+      display: none;
+    }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-bright);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-overlay p {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .loading-overlay .refined-box {
+      max-width: 320px;
+      padding: 10px 14px;
+      margin-top: 6px;
+      background: rgba(20, 23, 30, .95);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      text-align: left;
+    }
+
+    .loading-overlay .refined-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+
+    .loading-overlay .refined-text {
+      font-size: 12px;
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .loading-overlay .refined-from {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    .message.refined-from {
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 6px 10px;
+      border-left: 3px solid var(--accent);
+      background: var(--bg);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <div class="preview">
+      <iframe id="previewFrame" src="about:blank"></iframe>
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p id="loadingText">Starting sandbox...</p>
+        <div class="refined-box" id="refinedBox" style="display: none;">
+          <div class="refined-label" id="refinedStatus" style="display: none;"></div>
+          <div class="refined-label">Gemini refinement</div>
+          <div class="refined-from" id="refinedFrom" style="display: none;"></div>
+          <div class="refined-label" id="refinedToLabel" style="display: none;">Sent to AI</div>
+          <div class="refined-text" id="refinedText"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SANDBOX_ID = '{{SANDBOX_ID}}';
+    const BASE = '/s/' + SANDBOX_ID + '/';
+
+    let generating = false;
+    let currentFiles = [];
+
+    const els = Object.fromEntries(
+      ['previewFrame',
+        'loadingOverlay', 'loadingText', 'statusDot', 'statusText',
+        'urlInput', 'fileBar', 'refinedBox', 'refinedText', 'refinedFrom', 'refinedToLabel', 'refinedStatus'].map(id => [id, document.getElementById(id)])
+    );
+
+    function autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
+    function handleKey(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); }
+    }
+    function useSuggestion(el) {
+      els.promptInput.value = el.textContent;
+      els.sendBtn.disabled = false;
+      els.promptInput.focus();
+      sendPrompt();
+    }
+
+    function addMessage(text, type, fileList) {
+    }
+
+    function addRefinedFromMessage(rawPrompt, refinedPrompt) {
+      return;
+    }
+
+    function setStatus(state, text) {
+      return;
+    }
+    function showLoading(text, refinedPrompt, rawPrompt, refinementSkipped, refinementFailed, refinementError) {
+      els.loadingText.textContent = text;
+      els.loadingOverlay.classList.remove('hidden');
+      if (els.refinedStatus) {
+        if (refinementSkipped) {
+          els.refinedStatus.textContent = 'Refinement skipped (no GEMINI_API_KEY in worker)';
+          els.refinedStatus.style.display = 'block';
+          els.refinedStatus.style.color = 'var(--warning, #b8860b)';
+        } else if (refinementFailed) {
+          els.refinedStatus.textContent = 'Refinement failed: ' + (refinementError || 'unknown error');
+          els.refinedStatus.style.display = 'block';
+          els.refinedStatus.style.color = 'var(--destructive, #dc2626)';
+        } else {
+          els.refinedStatus.style.display = 'none';
+        }
+      }
+      if (refinedPrompt && els.refinedBox && els.refinedText) {
+        els.refinedText.textContent = refinedPrompt;
+        els.refinedBox.style.display = 'block';
+        if (els.refinedFrom && els.refinedToLabel) {
+          if (rawPrompt && rawPrompt !== refinedPrompt) {
+            els.refinedFrom.textContent = 'From: ' + rawPrompt;
+            els.refinedFrom.style.display = 'block';
+            els.refinedToLabel.textContent = 'To (sent to AI):';
+            els.refinedToLabel.style.display = 'block';
+          } else {
+            els.refinedFrom.style.display = 'none';
+            els.refinedToLabel.textContent = 'Refined prompt sent to AI';
+            els.refinedToLabel.style.display = 'block';
+          }
+        }
+      } else if (els.refinedBox) {
+        els.refinedBox.style.display = 'none';
+        if (els.refinedFrom) els.refinedFrom.style.display = 'none';
+        if (els.refinedToLabel) els.refinedToLabel.style.display = 'none';
+      }
+    }
+    function hideLoading() {
+      els.loadingOverlay.classList.add('hidden');
+      if (els.refinedBox) els.refinedBox.style.display = 'none';
+      if (els.refinedFrom) els.refinedFrom.style.display = 'none';
+      if (els.refinedToLabel) els.refinedToLabel.style.display = 'none';
+      if (els.refinedStatus) els.refinedStatus.style.display = 'none';
+    }
+
+    function renderFileTabs(files) {
+      currentFiles = files;
+    }
+
+    function navigatePreview(path) {
+      if (!path.startsWith('preview')) path = 'preview/' + path.replace(/^\/+/, '');
+      const fullUrl = BASE + path + (path.includes('?') ? '&' : '?') + '_t=' + Date.now();
+      els.previewFrame.src = fullUrl;
+    }
+
+    function reloadPreview() {
+      const path = 'preview/';
+      const fullUrl = BASE + path + (path.includes('?') ? '&' : '?') + '_t=' + Date.now();
+      els.previewFrame.src = fullUrl;
+    }
+
+    async function initSandbox(attempt) {
+      attempt = attempt || 1;
+      const MAX = 3;
+      setStatus('loading', 'Starting sandbox...');
+      showLoading(attempt > 1
+        ? 'Container is booting, retrying (' + attempt + '/' + MAX + ')...'
+        : 'Starting sandbox container...');
+      try {
+        const res = await fetch(BASE + 'api/init', { method: 'POST' });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        renderFileTabs(data.files || []);
+        navigatePreview('preview/');
+        setStatus('active', 'Sandbox ready');
+        hideLoading();
+      } catch (err) {
+        if (attempt < MAX) {
+          await new Promise(r => setTimeout(r, 3000 * attempt));
+          return initSandbox(attempt + 1);
+        }
+        setStatus('', 'Error');
+        showLoading('Failed to start: ' + err.message);
+      }
+    }
+
+    async function doRefineRequest(prompt) {
+      const res = await fetch(BASE + 'api/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json().catch(() => ({}));
+      var refined = data.refinedPrompt != null ? String(data.refinedPrompt).trim() : '';
+      return {
+        refinedPrompt: refined,
+        refinementSkipped: !!data.refinementSkipped,
+        refinementFailed: !!data.refinementFailed,
+        refinementError: typeof data.refinementError === 'string' ? data.refinementError : null,
+        refinementEmpty: !!data.refinementEmpty,
+      };
+    }
+
+    async function doPromptRequest(prompt, refinedPrompt) {
+      const res = await fetch(BASE + 'api/prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: refinedPrompt != null ? refinedPrompt : prompt,
+          refinedPrompt: refinedPrompt != null ? refinedPrompt : undefined,
+          history: history.slice(-6),
+        }),
+      });
+      if (!res.ok && res.status >= 500) throw new Error('Server error (' + res.status + ')');
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    }
+
+    async function sendPrompt() {
+      const prompt = '';
+      if (!prompt || generating) return;
+      generating = true;
+      els.sendBtn.disabled = true;
+      els.promptInput.value = '';
+      els.promptInput.style.height = 'auto';
+      setStatus('loading', 'Generating...');
+      showLoading('Refining prompt...');
+
+      var refinedPrompt = '';
+      var refinementSkipped = false;
+      var refinementFailed = false;
+      var refinementError = null;
+      var refinementEmpty = false;
+      try {
+        var refineResult = await doRefineRequest(prompt);
+        refinedPrompt = refineResult.refinedPrompt;
+        refinementSkipped = refineResult.refinementSkipped;
+        refinementFailed = refineResult.refinementFailed;
+        refinementError = refineResult.refinementError;
+        refinementEmpty = refineResult.refinementEmpty;
+      } catch (e) {
+        refinementFailed = true;
+        refinementError = e && e.message ? e.message : 'Network or request error';
+      }
+      var isEmpty = refinementEmpty || !refinedPrompt || refinedPrompt.length < 2;
+      console.log('[refine] input preview:', prompt.slice(0, 80) + (prompt.length > 80 ? '...' : ''), '| result:', isEmpty ? '(empty)' : refinedPrompt, '| skipping LLM:', isEmpty);
+
+      if (isEmpty) {
+        var noRequestMessage = refinedPrompt || 'Refinement returned nothing; not calling AI.';
+        addMessage(noRequestMessage, 'user');
+        history.push({ role: 'user', content: noRequestMessage });
+        showLoading('No actionable request.', refinedPrompt || noRequestMessage, prompt, refinementSkipped, refinementFailed, refinementError);
+        hideLoading();
+        generating = false;
+        els.sendBtn.disabled = true;
+        return;
+      }
+
+      addMessage(refinedPrompt, 'user');
+      if (prompt !== refinedPrompt) addRefinedFromMessage(prompt, refinedPrompt);
+      history.push({ role: 'user', content: refinedPrompt });
+      showLoading('AI is updating your app...', refinedPrompt, prompt, refinementSkipped, refinementFailed, refinementError);
+
+      var data = null;
+      var lastErr = null;
+      for (var attempt = 1; attempt <= 2; attempt++) {
+        try {
+          if (attempt > 1) showLoading('Retrying (' + attempt + '/2)...', refinedPrompt, prompt, refinementSkipped, refinementFailed, refinementError);
+          data = await doPromptRequest(prompt, refinedPrompt);
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+
+      if (data) {
+        var changedFiles = [...(data.written || []), ...(data.deleted || []).map(f => f + ' (deleted)')];
+        var responseText = 'Updated ' + changedFiles.length + ' file(s): ' + changedFiles.join(', ');
+        history.push({ role: 'assistant', content: 'Updated: ' + changedFiles.join(', ') });
+        addMessage('Updated ' + changedFiles.length + ' file(s)', 'system', changedFiles);
+        if (data.files) renderFileTabs(data.files);
+        setStatus('active', 'Sandbox ready');
+        reloadPreview();
+        hideLoading();
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'SANDBOX_RESPONSE', text: responseText, success: true }, '*');
+        }
+      } else {
+        var errText = 'Error: ' + (lastErr ? lastErr.message : 'Unknown error');
+        addMessage(errText, 'error');
+        setStatus('active', 'Sandbox ready');
+        hideLoading();
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'SANDBOX_RESPONSE', text: errText, success: false }, '*');
+        }
+      }
+      generating = false;
+      els.sendBtn.disabled = true;
+    }
+
+    window.addEventListener('message', function (event) {
+      var d = event.data;
+      if (!d || !d.type) return;
+      if (d.type === 'VOICE_PROMPT' && d.text) {
+        els.promptInput.value = d.text;
+        els.sendBtn.disabled = false;
+        autoResize(els.promptInput);
+        sendPrompt();
+        return;
+      }
+      // ── Mouse tracking (UX telemetry): snapshots sent to dashboard for Convex ──
+      if (d.type === 'START_MOUSE_TRACKING' && d.sandboxId && d.sessionId) {
+        if (window.__mouseTrackingActive) return;
+        window.__mouseTrackingActive = true;
+        window.__mouseTrackingSessionId = d.sessionId;
+        window.__mouseTrackingSandboxId = d.sandboxId;
+        var mouseThrottleMs = 100;
+        var mouseLastRun = 0;
+        var mouseRaf = null;
+        var mouseLastCoords = { x: 0, y: 0 };
+        var mouseLastDoc = document;
+        var INTERACTIVE_SEL = "a[href], button, input:not([type='hidden']), select, textarea, [role='button'], [role='link'], [role='tab'], [role='menuitem'], [role='option'], [role='switch'], [role='checkbox'], [role='radio'], [role='searchbox'], [role='combobox'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
+        function getStableId(el) {
+          if (el.id && String(el.id).trim()) return String(el.id).trim();
+          var tag = el.tagName ? el.tagName.toLowerCase() : '?';
+          var cls = (el.className && typeof el.className === 'string') ? el.className.trim().split(/\s+/).filter(Boolean).sort().join('.') : '';
+          var role = el.getAttribute('role') || '';
+          var aria = el.getAttribute('aria-label') || '';
+          var text = (el.textContent || '').trim().slice(0, 40).replace(/\s+/g, ' ');
+          var path = [];
+          var cur = el;
+          while (cur && cur !== document.body) {
+            var par = cur.parentElement;
+            if (!par) break;
+            var sibs = Array.prototype.slice.call(par.children);
+            var idx = sibs.indexOf(cur);
+            path.unshift(idx >= 0 ? idx : 0);
+            cur = par;
+          }
+          var pathStr = path.join('.');
+          var parts = [tag];
+          if (cls) parts.push('.' + cls);
+          if (role) parts.push('[role=' + role + ']');
+          if (aria) parts.push('[aria-label=' + aria.slice(0, 30) + ']');
+          if (text) parts.push('|' + text);
+          if (pathStr) parts.push('@' + pathStr);
+          var fp = parts.join('');
+          return fp.length > 120 ? fp.slice(0, 120) + '\u2026' : (fp || tag + '@' + pathStr);
+        }
+        function findInteractiveAt(el) {
+          if (!el) return null;
+          try { return el.closest(INTERACTIVE_SEL); } catch (e) { return null; }
+        }
+        function getIntentOffsets(radius) {
+          if (radius <= 0) return [{ dx: 0, dy: 0 }];
+          var out = [{ dx: 0, dy: 0 }];
+          for (var i = 0; i < 8; i++) {
+            var a = (i * Math.PI) / 4;
+            out.push({ dx: Math.round(radius * Math.cos(a)), dy: Math.round(radius * Math.sin(a)) });
+          }
+          return out;
+        }
+        function findIntentElement(doc, clientX, clientY, radius) {
+          radius = radius || 12;
+          var offsets = getIntentOffsets(radius);
+          var found = new Set();
+          for (var i = 0; i < offsets.length; i++) {
+            var o = offsets[i];
+            var el = doc.elementFromPoint(clientX + o.dx, clientY + o.dy);
+            var inter = findInteractiveAt(el);
+            if (inter) found.add(inter);
+          }
+          if (found.size === 0) return null;
+          if (found.size === 1) return found.values().next().value;
+          var best = null, bestD = Infinity;
+          found.forEach(function (el) {
+            var r = el.getBoundingClientRect();
+            var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            var d = (clientX - cx) * (clientX - cx) + (clientY - cy) * (clientY - cy);
+            if (d < bestD) { bestD = d; best = el; }
+          });
+          return best;
+        }
+        function captureSnapshot(el, maxLen) {
+          maxLen = maxLen || 500;
+          if (!el || typeof el.outerHTML !== 'string') return null;
+          var tagName = el.tagName || '';
+          var outerHTML = el.outerHTML.length > maxLen ? el.outerHTML.slice(0, maxLen) + '...' : el.outerHTML;
+          var id = el.id || null;
+          var stableId = getStableId(el);
+          return { tagName: tagName, outerHTML: outerHTML, id: id || undefined, stableId: stableId };
+        }
+        function sendSnapshot(clientX, clientY, doc) {
+          if (!doc) return;
+          var el = doc.elementFromPoint(clientX, clientY);
+          var interactive = findIntentElement(doc, clientX, clientY, 12);
+          var elementUnderCursor = captureSnapshot(el, 500);
+          var interactiveElement = captureSnapshot(interactive, 500);
+          var payload = {
+            position: { x: clientX, y: clientY },
+            elementUnderCursor: elementUnderCursor,
+            interactiveElement: interactiveElement
+          };
+          try {
+            window.parent.postMessage({ type: 'MOUSE_SNAPSHOT', timestampMs: Date.now(), payload: payload }, '*');
+          } catch (e) { }
+        }
+        function throttledSnapshot(clientX, clientY, doc) {
+          var now = Date.now();
+          if (now - mouseLastRun >= mouseThrottleMs) {
+            mouseLastRun = now;
+            sendSnapshot(clientX, clientY, doc);
+            return;
+          }
+          mouseLastCoords = { x: clientX, y: clientY };
+          mouseLastDoc = doc;
+          if (mouseRaf == null) {
+            mouseRaf = requestAnimationFrame(function () {
+              mouseRaf = null;
+              mouseLastRun = Date.now();
+              sendSnapshot(mouseLastCoords.x, mouseLastCoords.y, mouseLastDoc);
+            });
+          }
+        }
+        function onPreviewMouseMove(e) {
+          if (!window.__mouseTrackingActive) return;
+          throttledSnapshot(e.clientX, e.clientY, e.target.ownerDocument || document);
+        }
+        function attachPreviewListeners() {
+          try {
+            var pd = els.previewFrame && els.previewFrame.contentDocument;
+            if (pd) pd.addEventListener('mousemove', onPreviewMouseMove, { passive: true });
+          } catch (e) { }
+        }
+        attachPreviewListeners();
+        els.previewFrame.addEventListener('load', attachPreviewListeners);
+        window.__mouseTrackingCleanup = function () {
+          window.__mouseTrackingActive = false;
+          try {
+            var pd = els.previewFrame && els.previewFrame.contentDocument;
+            if (pd) pd.removeEventListener('mousemove', onPreviewMouseMove);
+          } catch (e) { }
+          els.previewFrame.removeEventListener('load', attachPreviewListeners);
+          if (mouseRaf != null) { cancelAnimationFrame(mouseRaf); mouseRaf = null; }
+          window.__mouseTrackingCleanup = null;
+        };
+        return;
+      }
+      if (d.type === 'STOP_MOUSE_TRACKING') {
+        if (typeof window.__mouseTrackingCleanup === 'function') {
+          window.__mouseTrackingCleanup();
+        }
+        return;
+      }
+    });
+
+    initSandbox();
+  </script>
+</body>
+
+</html>

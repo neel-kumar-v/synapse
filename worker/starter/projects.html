@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projects &mdash; Starter App</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo">Acme</a>
+      <button class="nav-toggle" aria-label="Menu">&#9776;</button>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="projects.html" class="active">Projects</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <section class="page-header">
+    <h1>Projects</h1>
+    <p>A showcase of things we have built.</p>
+  </section>
+
+  <section class="container" style="padding-block:3rem">
+    <div class="grid-3">
+      <div class="project-card">
+        <div class="project-img" style="background:#6c72cb"></div>
+        <div class="project-body">
+          <h3>Dashboard UI</h3>
+          <p>An analytics dashboard with real-time charts and data tables.</p>
+          <span class="tag">React</span><span class="tag">D3</span>
+        </div>
+      </div>
+      <div class="project-card">
+        <div class="project-img" style="background:#34d399"></div>
+        <div class="project-body">
+          <h3>Chat Platform</h3>
+          <p>End-to-end encrypted messaging with file sharing and threads.</p>
+          <span class="tag">WebSocket</span><span class="tag">Node</span>
+        </div>
+      </div>
+      <div class="project-card">
+        <div class="project-img" style="background:#f59e0b"></div>
+        <div class="project-body">
+          <h3>Design System</h3>
+          <p>A comprehensive component library with theming support.</p>
+          <span class="tag">CSS</span><span class="tag">Figma</span>
+        </div>
+      </div>
+      <div class="project-card">
+        <div class="project-img" style="background:#ec4899"></div>
+        <div class="project-body">
+          <h3>Mobile App</h3>
+          <p>Cross-platform fitness tracker with workout plans and progress charts.</p>
+          <span class="tag">React Native</span>
+        </div>
+      </div>
+      <div class="project-card">
+        <div class="project-img" style="background:#3b82f6"></div>
+        <div class="project-body">
+          <h3>API Gateway</h3>
+          <p>High-performance proxy with rate limiting, auth and caching.</p>
+          <span class="tag">Rust</span><span class="tag">Cloudflare</span>
+        </div>
+      </div>
+      <div class="project-card">
+        <div class="project-img" style="background:#8b5cf6"></div>
+        <div class="project-body">
+          <h3>AI Copilot</h3>
+          <p>Code assistant plugin for VS Code powered by LLMs.</p>
+          <span class="tag">TypeScript</span><span class="tag">LLM</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">&copy; 2026 Acme. All rights reserved.</div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

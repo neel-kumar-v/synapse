@@ -1,0 +1,47 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "my-sandbox",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-05-06",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"observability": {
+		"enabled": true
+	},
+	"ai": {
+		"binding": "AI"
+	},
+	"containers": [
+		{
+			"class_name": "Sandbox",
+			"image": "../Dockerfile",
+			"instance_type": "lite",
+			"max_instances": 20
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "Sandbox",
+				"name": "Sandbox"
+			}
+		]
+	},
+	"dev": {
+		"enable_containers": false
+	},
+	"migrations": [
+		{
+			"new_sqlite_classes": [
+				"Sandbox"
+			],
+			"tag": "v1"
+		}
+	]
+}
+
